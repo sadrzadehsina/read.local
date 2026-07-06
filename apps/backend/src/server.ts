@@ -12,6 +12,8 @@ type CreateSourceBody = {
   url?: string;
 };
 
+const workerBaseUrl = process.env.WORKER_BASE_URL;
+
 function toSourceDto(source: Source): SourceDto {
   return {
     id: source.id,
@@ -19,6 +21,32 @@ function toSourceDto(source: Source): SourceDto {
     title: source.title,
     createdAt: source.createdAt.toISOString()
   };
+}
+
+async function enqueueSourceIngestion(sourceId: string) {
+  if (!workerBaseUrl) {
+    app.log.warn("WORKER_BASE_URL is not set; skipping ingestion enqueue.");
+    return;
+  }
+
+  try {
+    const response = await fetch(`${workerBaseUrl}/ingest`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ sourceId })
+    });
+
+    if (!response.ok) {
+      app.log.warn(
+        { sourceId, status: response.status },
+        "Worker refused ingestion enqueue."
+      );
+    }
+  } catch (error) {
+    app.log.warn({ error, sourceId }, "Unable to enqueue source ingestion.");
+  }
 }
 
 function getTitleFromUrl(url: string): string {
@@ -68,6 +96,8 @@ app.post<{ Body: CreateSourceBody }>("/sources", async (request, reply) => {
         title: getTitleFromUrl(url)
       }
     });
+
+    await enqueueSourceIngestion(source.id);
 
     return reply.status(201).send(toSourceDto(source));
   } catch (error) {

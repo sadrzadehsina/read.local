@@ -169,9 +169,13 @@ function App() {
               </div>
               <div>
                 <dt>Status</dt>
-                <dd>Ready for ingestion in Phase 2</dd>
+                <dd>Ingestion starts automatically when a source is added.</dd>
               </div>
             </dl>
+            <section className="posts-placeholder" aria-label="Posts">
+              <h3>Posts</h3>
+              <p>No posts to show yet.</p>
+            </section>
           </article>
         ) : (
           <article className="empty-detail">

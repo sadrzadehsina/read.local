@@ -12,4 +12,17 @@ model Source {
   url       String   @unique
   title     String
   createdAt DateTime @default(now())
+  posts     Post[]
+}
+
+model Post {
+  id          String   @id @default(cuid())
+  sourceId    String
+  title       String
+  content     String
+  originalUrl String   @unique
+  publishedAt DateTime
+  source      Source   @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@index([sourceId])
 }

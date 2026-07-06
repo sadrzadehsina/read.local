@@ -28,6 +28,7 @@ services:
     environment:
       DATABASE_URL: file:/data/read-local.db
       PORT: "3000"
+      WORKER_BASE_URL: http://worker:3001
     volumes:
       - sqlite-data:/data
     expose:
