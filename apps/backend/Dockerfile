@@ -2,6 +2,8 @@ FROM node:20-alpine
 
 WORKDIR /app
 
+RUN apk add --no-cache openssl
+
 COPY package.json package-lock.json ./
 COPY tsconfig.base.json ./
 COPY apps/backend/package.json apps/backend/package.json
@@ -14,7 +16,8 @@ RUN npm ci
 
 COPY apps/backend apps/backend
 COPY packages/shared packages/shared
+COPY packages/database packages/database
 
-RUN npm run build -w @readlocal/shared && npm run build -w @readlocal/backend
+RUN npx prisma generate --schema packages/database/prisma/schema.prisma && npm run build -w @readlocal/shared && npm run build -w @readlocal/backend
 
-CMD ["npm", "run", "start", "-w", "@readlocal/backend"]
+CMD ["sh", "-c", "npx prisma db push --schema packages/database/prisma/schema.prisma && npm run start -w @readlocal/backend"]

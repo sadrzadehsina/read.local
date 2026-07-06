@@ -7,4 +7,9 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Business models begin in Phase 1.
+model Source {
+  id        String   @id @default(cuid())
+  url       String   @unique
+  title     String
+  createdAt DateTime @default(now())
+}
