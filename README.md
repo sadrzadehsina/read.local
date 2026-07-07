@@ -6,6 +6,30 @@ Each phase is independent and assumes previous phases are completed.
 
 ---
 
+# Running Locally
+
+The app is designed to run through Docker Compose and nginx at `http://read.local`.
+
+Add this entry to `/etc/hosts` on the host machine:
+
+```txt
+127.0.0.1 read.local
+```
+
+Then start the stack:
+
+```sh
+docker compose up --build
+```
+
+Open:
+
+- Frontend reader: `http://read.local`
+- Backend health check: `http://read.local/api/health`
+- Worker health check: `http://read.local/worker/health`
+
+---
+
 # GLOBAL INSTRUCTIONS (apply to all phases)
 
 When implementing:
