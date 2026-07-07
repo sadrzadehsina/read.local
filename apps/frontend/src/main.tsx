@@ -3,13 +3,20 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState
 } from "react";
 import ReactDOM from "react-dom/client";
 import {
+  Check,
   ChevronDown,
   ChevronUp,
+  Copy,
+  Download,
   ExternalLink,
+  FileArchive,
+  FileCode,
+  FileText,
   Folder,
   Moon,
   Plus,
@@ -53,6 +60,11 @@ const themeStorageKey = "read-local-theme";
 
 type Theme = "light" | "dark";
 type ThemePreference = Theme | "system";
+type InitialUrlSelection = {
+  sourceId: string | null;
+  postId: string | null;
+  tagId: string | null;
+};
 
 function getSystemTheme(): Theme {
   if (
@@ -75,6 +87,43 @@ function getInitialThemePreference(): ThemePreference {
   return storedTheme === "light" || storedTheme === "dark"
     ? storedTheme
     : "system";
+}
+
+function getInitialUrlSelection(): InitialUrlSelection {
+  if (typeof window === "undefined") {
+    return {
+      sourceId: null,
+      postId: null,
+      tagId: null
+    };
+  }
+
+  const params = new URLSearchParams(window.location.search);
+
+  return {
+    sourceId: params.get("source"),
+    postId: params.get("post"),
+    tagId: params.get("tag")
+  };
+}
+
+function buildPostShareUrl(post: Post, selectedTagId: string) {
+  const url = new URL(window.location.href);
+
+  url.search = "";
+  url.hash = "";
+  url.searchParams.set("source", post.sourceId);
+  url.searchParams.set("post", post.id);
+
+  if (selectedTagId) {
+    url.searchParams.set("tag", selectedTagId);
+  }
+
+  return url.toString();
+}
+
+function getExportUrl(path: string) {
+  return `${apiBaseUrl}${path}`;
 }
 
 function formatDate(value: string) {
@@ -188,6 +237,8 @@ function EmptyDetail({
 }
 
 function App() {
+  const initialUrlSelectionRef = useRef(getInitialUrlSelection());
+  const pendingInitialPostIdRef = useRef(initialUrlSelectionRef.current.postId);
   const [sources, setSources] = useState<Source[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [themePreference, setThemePreference] = useState<ThemePreference>(
@@ -195,7 +246,9 @@ function App() {
   );
   const [systemTheme, setSystemTheme] = useState<Theme>(getSystemTheme);
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
-  const [selectedTagId, setSelectedTagId] = useState("");
+  const [selectedTagId, setSelectedTagId] = useState(
+    initialUrlSelectionRef.current.tagId ?? ""
+  );
   const [posts, setPosts] = useState<PostSummary[]>([]);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const [readerPost, setReaderPost] = useState<Post | null>(null);
@@ -211,6 +264,8 @@ function App() {
   const [postsError, setPostsError] = useState<string | null>(null);
   const [readerError, setReaderError] = useState<string | null>(null);
   const [tagError, setTagError] = useState<string | null>(null);
+  const [shareStatus, setShareStatus] = useState<string | null>(null);
+  const [shareError, setShareError] = useState<string | null>(null);
 
   const selectedSource = useMemo(
     () => sources.find((source) => source.id === selectedSourceId) ?? null,
@@ -294,7 +349,20 @@ function App() {
         if (isMounted) {
           setSources(nextSources);
           setTags(nextTags);
-          setSelectedSourceId((currentId) => currentId ?? nextSources[0]?.id ?? null);
+          setSelectedSourceId((currentId) => {
+            if (currentId) {
+              return currentId;
+            }
+
+            const initialSourceId = initialUrlSelectionRef.current.sourceId;
+            const initialSourceExists = nextSources.some(
+              (source) => source.id === initialSourceId
+            );
+
+            return initialSourceExists
+              ? initialSourceId
+              : nextSources[0]?.id ?? null;
+          });
           setError(null);
         }
       } catch (loadError) {
@@ -335,6 +403,32 @@ function App() {
     document.documentElement.classList.toggle("dark", activeTheme === "dark");
     document.documentElement.style.colorScheme = activeTheme;
   }, [activeTheme]);
+
+  useEffect(() => {
+    if (isLoading) {
+      return;
+    }
+
+    const params = new URLSearchParams();
+
+    if (selectedSourceId) {
+      params.set("source", selectedSourceId);
+    }
+
+    if (selectedPostId) {
+      params.set("post", selectedPostId);
+    }
+
+    if (selectedTagId) {
+      params.set("tag", selectedTagId);
+    }
+
+    const nextUrl = `${window.location.pathname}${
+      params.size ? `?${params.toString()}` : ""
+    }${window.location.hash}`;
+
+    window.history.replaceState(null, "", nextUrl);
+  }, [isLoading, selectedPostId, selectedSourceId, selectedTagId]);
 
   useEffect(() => {
     function handleKeyboardNavigation(event: KeyboardEvent) {
@@ -405,6 +499,13 @@ function App() {
 
         if (isMounted) {
           setPosts(nextPosts);
+
+          const pendingPostId = pendingInitialPostIdRef.current;
+
+          if (pendingPostId && nextPosts.some((post) => post.id === pendingPostId)) {
+            setSelectedPostId(pendingPostId);
+            pendingInitialPostIdRef.current = null;
+          }
         }
       } catch (loadError) {
         if (isMounted) {
@@ -467,6 +568,11 @@ function App() {
     return () => {
       isMounted = false;
     };
+  }, [selectedPostId]);
+
+  useEffect(() => {
+    setShareStatus(null);
+    setShareError(null);
   }, [selectedPostId]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -604,6 +710,39 @@ function App() {
     }
   }
 
+  async function copyText(value: string) {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return;
+    }
+
+    const textArea = document.createElement("textarea");
+    textArea.value = value;
+    textArea.setAttribute("readonly", "true");
+    textArea.style.position = "fixed";
+    textArea.style.left = "-9999px";
+    document.body.append(textArea);
+    textArea.select();
+    document.execCommand("copy");
+    textArea.remove();
+  }
+
+  async function handleCopyPostLink() {
+    if (!readerPost) {
+      return;
+    }
+
+    setShareStatus(null);
+    setShareError(null);
+
+    try {
+      await copyText(buildPostShareUrl(readerPost, selectedTagId));
+      setShareStatus("Local link copied.");
+    } catch {
+      setShareError("Unable to copy the local link.");
+    }
+  }
+
   return (
     <main className="grid min-h-screen grid-cols-1 bg-background text-foreground lg:grid-cols-[minmax(280px,340px)_1fr]">
       <aside
@@ -712,6 +851,14 @@ function App() {
                 >
                   {selectedSource.url}
                 </a>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button asChild variant="outline">
+                    <a href={getExportUrl(`/sources/${selectedSource.id}/export`)}>
+                      <FileArchive className="h-4 w-4" aria-hidden="true" />
+                      Export source
+                    </a>
+                  </Button>
+                </div>
                 <label className="mt-4 grid gap-1.5">
                   <span className="text-sm font-extrabold text-foreground">
                     Filter by tag
@@ -869,6 +1016,45 @@ function App() {
                       </Button>
                     </form>
                     {tagError ? <Notice variant="error">{tagError}</Notice> : null}
+                  </section>
+                  <section className="mt-5 grid gap-3" aria-label="Sharing and export">
+                    <div className="flex flex-wrap gap-2">
+                      <Button type="button" variant="outline" onClick={handleCopyPostLink}>
+                        {shareStatus ? (
+                          <Check className="h-4 w-4" aria-hidden="true" />
+                        ) : (
+                          <Copy className="h-4 w-4" aria-hidden="true" />
+                        )}
+                        Copy link
+                      </Button>
+                      <Button asChild variant="outline">
+                        <a
+                          href={getExportUrl(
+                            `/posts/${readerPost.id}/export?format=html`
+                          )}
+                        >
+                          <FileCode className="h-4 w-4" aria-hidden="true" />
+                          Export HTML
+                        </a>
+                      </Button>
+                      <Button asChild variant="outline">
+                        <a
+                          href={getExportUrl(
+                            `/posts/${readerPost.id}/export?format=markdown`
+                          )}
+                        >
+                          <FileText className="h-4 w-4" aria-hidden="true" />
+                          Export Markdown
+                        </a>
+                      </Button>
+                    </div>
+                    {shareStatus ? (
+                      <p className="m-0 flex items-center gap-2 text-sm text-muted-foreground">
+                        <Download className="h-4 w-4" aria-hidden="true" />
+                        {shareStatus}
+                      </p>
+                    ) : null}
+                    {shareError ? <Notice variant="error">{shareError}</Notice> : null}
                   </section>
                 </header>
                 <div

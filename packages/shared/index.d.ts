@@ -28,3 +28,13 @@ export type PostSummaryDto = {
 export type PostDto = PostSummaryDto & {
   content: string;
 };
+
+export type ExportedPostDto = PostDto & {
+  sourceTitle: string;
+  exportedAt: string;
+};
+
+export type SourceExportDto = SourceDto & {
+  exportedAt: string;
+  posts: PostDto[];
+};
