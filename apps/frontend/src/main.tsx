@@ -1,6 +1,21 @@
-import React, { FormEvent, useEffect, useMemo, useState } from "react";
+import React, {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState
+} from "react";
 import ReactDOM from "react-dom/client";
-import { ExternalLink, Folder, Plus, Rss, X } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
+  Folder,
+  Moon,
+  Plus,
+  Sun,
+  X
+} from "lucide-react";
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
@@ -34,6 +49,33 @@ type Post = PostSummary & {
 };
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "/api";
+const themeStorageKey = "read-local-theme";
+
+type Theme = "light" | "dark";
+type ThemePreference = Theme | "system";
+
+function getSystemTheme(): Theme {
+  if (
+    typeof window !== "undefined" &&
+    window.matchMedia("(prefers-color-scheme: dark)").matches
+  ) {
+    return "dark";
+  }
+
+  return "light";
+}
+
+function getInitialThemePreference(): ThemePreference {
+  if (typeof window === "undefined") {
+    return "system";
+  }
+
+  const storedTheme = window.localStorage.getItem(themeStorageKey);
+
+  return storedTheme === "light" || storedTheme === "dark"
+    ? storedTheme
+    : "system";
+}
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat(undefined, {
@@ -148,6 +190,10 @@ function EmptyDetail({
 function App() {
   const [sources, setSources] = useState<Source[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
+  const [themePreference, setThemePreference] = useState<ThemePreference>(
+    getInitialThemePreference
+  );
+  const [systemTheme, setSystemTheme] = useState<Theme>(getSystemTheme);
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
   const [selectedTagId, setSelectedTagId] = useState("");
   const [posts, setPosts] = useState<PostSummary[]>([]);
@@ -171,6 +217,17 @@ function App() {
     [selectedSourceId, sources]
   );
 
+  const activeTheme = themePreference === "system" ? systemTheme : themePreference;
+
+  const selectedPostIndex = useMemo(
+    () => posts.findIndex((post) => post.id === selectedPostId),
+    [posts, selectedPostId]
+  );
+
+  const canSelectPreviousPost = selectedPostIndex > 0;
+  const canSelectNextPost =
+    selectedPostIndex >= 0 && selectedPostIndex < posts.length - 1;
+
   const tagSuggestions = useMemo(
     () =>
       tags.filter(
@@ -178,6 +235,40 @@ function App() {
       ),
     [readerPost?.tags, tags]
   );
+
+  const selectRelativePost = useCallback(
+    (direction: -1 | 1) => {
+      if (posts.length === 0) {
+        return;
+      }
+
+      setSelectedPostId((currentId) => {
+        const currentIndex = currentId
+          ? posts.findIndex((post) => post.id === currentId)
+          : -1;
+
+        if (currentIndex === -1) {
+          return direction > 0 ? posts[0].id : posts[posts.length - 1].id;
+        }
+
+        const nextIndex = currentIndex + direction;
+
+        if (nextIndex < 0 || nextIndex >= posts.length) {
+          return currentId;
+        }
+
+        return posts[nextIndex].id;
+      });
+    },
+    [posts]
+  );
+
+  function toggleTheme() {
+    const nextTheme: Theme = activeTheme === "dark" ? "light" : "dark";
+
+    setThemePreference(nextTheme);
+    window.localStorage.setItem(themeStorageKey, nextTheme);
+  }
 
   useEffect(() => {
     let isMounted = true;
@@ -225,6 +316,57 @@ function App() {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+
+    function handleSystemThemeChange(event: MediaQueryListEvent) {
+      setSystemTheme(event.matches ? "dark" : "light");
+    }
+
+    mediaQuery.addEventListener("change", handleSystemThemeChange);
+
+    return () => {
+      mediaQuery.removeEventListener("change", handleSystemThemeChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", activeTheme === "dark");
+    document.documentElement.style.colorScheme = activeTheme;
+  }, [activeTheme]);
+
+  useEffect(() => {
+    function handleKeyboardNavigation(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName.toLowerCase();
+      const isEditing =
+        target?.isContentEditable ||
+        tagName === "input" ||
+        tagName === "textarea" ||
+        tagName === "select";
+
+      if (isEditing || event.altKey || event.ctrlKey || event.metaKey) {
+        return;
+      }
+
+      if (event.key === "j") {
+        event.preventDefault();
+        selectRelativePost(1);
+      }
+
+      if (event.key === "k") {
+        event.preventDefault();
+        selectRelativePost(-1);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyboardNavigation);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyboardNavigation);
+    };
+  }, [selectRelativePost]);
 
   useEffect(() => {
     setSelectedPostId(null);
@@ -465,17 +607,31 @@ function App() {
   return (
     <main className="grid min-h-screen grid-cols-1 bg-background text-foreground lg:grid-cols-[minmax(280px,340px)_1fr]">
       <aside
-        className="border-b border-border bg-[#fbfaf6] p-5 lg:min-h-screen lg:border-b-0 lg:border-r lg:p-6"
+        className="border-b border-border bg-muted/45 p-4 sm:p-5 lg:min-h-screen lg:border-b-0 lg:border-r lg:p-6"
         aria-label="Newsletter sources"
       >
         <div className="mb-7 flex items-center gap-3">
-          <span className="grid h-10 w-10 place-items-center rounded-md bg-[#24313a] text-sm font-extrabold text-white">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-primary text-sm font-extrabold text-primary-foreground">
             R
           </span>
-          <div>
+          <div className="min-w-0 flex-1">
             <h1 className="m-0 text-[1.35rem] font-bold leading-tight">Read Local</h1>
             <p className="mt-0.5 text-sm text-muted-foreground">Newsletter sources</p>
           </div>
+          <Button
+            aria-label={`Switch to ${activeTheme === "dark" ? "light" : "dark"} mode`}
+            size="icon"
+            title={`Switch to ${activeTheme === "dark" ? "light" : "dark"} mode`}
+            type="button"
+            variant="outline"
+            onClick={toggleTheme}
+          >
+            {activeTheme === "dark" ? (
+              <Sun className="h-4 w-4" aria-hidden="true" />
+            ) : (
+              <Moon className="h-4 w-4" aria-hidden="true" />
+            )}
+          </Button>
         </div>
 
         <form className="mb-5 grid gap-2" onSubmit={handleSubmit}>
@@ -521,7 +677,7 @@ function App() {
               variant="ghost"
               onClick={() => handleSelectSource(source.id)}
             >
-              <Folder className="mt-0.5 h-5 w-5 shrink-0 fill-[#cc9460] text-[#b67845]" />
+              <Folder className="mt-0.5 h-5 w-5 shrink-0 fill-primary/20 text-primary" />
               <span className="min-w-0">
                 <strong className="block truncate text-[0.96rem]">{source.title}</strong>
                 <small className="mt-1 block truncate text-xs text-muted-foreground">
@@ -538,7 +694,7 @@ function App() {
         aria-live="polite"
       >
         <section
-          className="min-h-0 border-b border-border bg-card p-5 md:min-h-screen md:border-b-0 md:border-r md:p-6 lg:p-8"
+          className="min-h-0 border-b border-border bg-card p-4 sm:p-5 md:min-h-screen md:border-b-0 md:border-r md:p-6 lg:p-8"
           aria-label="Posts"
         >
           {selectedSource ? (
@@ -587,8 +743,8 @@ function App() {
                     className={cn(
                       "grid h-auto min-h-[84px] w-full justify-start gap-2 whitespace-normal rounded-md border p-3.5 text-left",
                       post.id === selectedPostId
-                        ? "border-[#9fb9c8] bg-accent text-foreground"
-                        : "border-[#e2e5e7] bg-card text-foreground hover:border-[#9fb9c8] hover:bg-accent"
+                        ? "border-primary/45 bg-accent text-foreground"
+                        : "border-border bg-card text-foreground hover:border-primary/45 hover:bg-accent"
                     )}
                     key={post.id}
                     type="button"
@@ -622,7 +778,7 @@ function App() {
         </section>
 
         {selectedPostId ? (
-          <article className="min-w-0 px-5 py-8 md:px-8 lg:px-16 lg:py-14">
+          <article className="min-w-0 px-4 py-7 sm:px-5 md:px-8 lg:px-16 lg:py-14">
             {readerError ? <Notice variant="error">{readerError}</Notice> : null}
             {isLoadingReader ? <Notice>Opening post...</Notice> : null}
 
@@ -630,7 +786,7 @@ function App() {
               <>
                 <header className="mb-8 max-w-[760px]">
                   <Eyebrow>Reader</Eyebrow>
-                  <h2 className="m-0 break-words font-serif text-4xl font-bold leading-[1.05] text-[#171c1f] md:text-5xl xl:text-6xl">
+                  <h2 className="m-0 break-words font-serif text-[2.35rem] font-bold leading-[1.08] text-foreground sm:text-5xl xl:text-6xl">
                     {readerPost.title}
                   </h2>
                   <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
@@ -647,6 +803,30 @@ function App() {
                         Open original in browser
                       </a>
                     </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        aria-label="Previous post"
+                        disabled={!canSelectPreviousPost}
+                        size="icon"
+                        title="Previous post"
+                        type="button"
+                        variant="outline"
+                        onClick={() => selectRelativePost(-1)}
+                      >
+                        <ChevronUp className="h-4 w-4" aria-hidden="true" />
+                      </Button>
+                      <Button
+                        aria-label="Next post"
+                        disabled={!canSelectNextPost}
+                        size="icon"
+                        title="Next post"
+                        type="button"
+                        variant="outline"
+                        onClick={() => selectRelativePost(1)}
+                      >
+                        <ChevronDown className="h-4 w-4" aria-hidden="true" />
+                      </Button>
+                    </div>
                   </div>
                   <section className="mt-5 grid gap-3" aria-label="Post tags">
                     <div className="flex flex-wrap gap-2">
@@ -669,7 +849,7 @@ function App() {
                       )}
                     </div>
                     <form
-                      className="grid max-w-sm grid-cols-[minmax(0,1fr)_auto] gap-2"
+                      className="grid max-w-sm grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"
                       onSubmit={handleAddTag}
                     >
                       <Input
@@ -699,13 +879,13 @@ function App() {
             ) : null}
           </article>
         ) : selectedSource ? (
-          <article className="min-w-0 px-5 py-8 md:px-8 lg:px-16 lg:py-14">
+          <article className="min-w-0 px-4 py-7 sm:px-5 md:px-8 lg:px-16 lg:py-14">
             <EmptyDetail eyebrow="Reader" title="Choose a post">
               Select a post from this source to read it here.
             </EmptyDetail>
           </article>
         ) : (
-          <article className="min-w-0 px-5 py-8 md:px-8 lg:px-16 lg:py-14">
+          <article className="min-w-0 px-4 py-7 sm:px-5 md:px-8 lg:px-16 lg:py-14">
             <EmptyDetail eyebrow="Reader" title="Nothing open">
               Your reading view will appear here.
             </EmptyDetail>

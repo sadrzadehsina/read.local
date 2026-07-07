@@ -4,24 +4,44 @@
 
 @layer base {
   :root {
-    --background: 43 36% 95%;
-    --foreground: 195 9% 14%;
+    --background: 42 33% 96%;
+    --foreground: 200 12% 13%;
     --card: 0 0% 100%;
-    --card-foreground: 195 9% 14%;
-    --primary: 199 53% 37%;
+    --card-foreground: 200 12% 13%;
+    --primary: 198 55% 36%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 72 20% 93%;
-    --secondary-foreground: 202 10% 30%;
-    --muted: 40 20% 91%;
-    --muted-foreground: 197 6% 44%;
-    --accent: 193 36% 95%;
-    --accent-foreground: 198 54% 31%;
+    --secondary: 73 20% 93%;
+    --secondary-foreground: 200 12% 28%;
+    --muted: 42 22% 91%;
+    --muted-foreground: 200 7% 40%;
+    --accent: 194 38% 94%;
+    --accent-foreground: 198 55% 28%;
     --destructive: 0 43% 51%;
     --destructive-foreground: 0 0% 100%;
-    --border: 38 21% 83%;
-    --input: 195 9% 80%;
-    --ring: 199 53% 37%;
+    --border: 38 22% 82%;
+    --input: 196 12% 78%;
+    --ring: 198 55% 36%;
     --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 210 18% 10%;
+    --foreground: 42 24% 92%;
+    --card: 208 17% 14%;
+    --card-foreground: 42 24% 92%;
+    --primary: 190 58% 56%;
+    --primary-foreground: 208 24% 10%;
+    --secondary: 210 13% 21%;
+    --secondary-foreground: 42 22% 90%;
+    --muted: 210 15% 16%;
+    --muted-foreground: 42 10% 68%;
+    --accent: 199 28% 20%;
+    --accent-foreground: 190 56% 82%;
+    --destructive: 0 56% 58%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 208 14% 25%;
+    --input: 208 14% 29%;
+    --ring: 190 58% 56%;
   }
 
   * {
@@ -32,6 +52,13 @@
     @apply min-w-80 bg-background font-sans text-foreground antialiased;
   }
 
+  body,
+  button,
+  input,
+  select {
+    @apply transition-colors duration-150;
+  }
+
   a {
     @apply text-primary;
   }
@@ -39,7 +66,7 @@
 
 @layer components {
   .reader-content {
-    @apply max-w-[720px] font-serif text-[1.08rem] leading-8 text-[#262b2e] md:text-[1.16rem];
+    @apply max-w-[720px] font-serif text-[1.08rem] leading-8 text-card-foreground md:text-[1.16rem] md:leading-9;
   }
 
   .reader-content > *:first-child {
@@ -57,7 +84,19 @@
   .reader-content h1,
   .reader-content h2,
   .reader-content h3 {
-    @apply mt-8 font-sans font-bold leading-tight text-foreground;
+    @apply mt-10 font-sans font-bold leading-tight text-foreground;
+  }
+
+  .reader-content h1 {
+    @apply text-3xl;
+  }
+
+  .reader-content h2 {
+    @apply text-2xl;
+  }
+
+  .reader-content h3 {
+    @apply text-xl;
   }
 
   .reader-content a {
@@ -79,6 +118,15 @@
   }
 
   .reader-content blockquote {
-    @apply ml-0 border-l-4 border-[#b67845] pl-4 text-[#4c5357];
+    @apply ml-0 border-l-4 border-primary/55 pl-4 text-muted-foreground;
+  }
+
+  .reader-content table {
+    @apply my-6 block max-w-full overflow-x-auto text-sm;
+  }
+
+  .reader-content th,
+  .reader-content td {
+    @apply border border-border px-3 py-2;
   }
 }
