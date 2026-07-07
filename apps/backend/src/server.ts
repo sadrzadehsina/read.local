@@ -1,6 +1,19 @@
 import Fastify from "fastify";
-import { Prisma, PrismaClient, type Source } from "@prisma/client";
-import type { HealthResponse, SourceDto } from "@readlocal/shared";
+import {
+  Prisma,
+  PrismaClient,
+  type Post,
+  type PostTag,
+  type Source,
+  type Tag
+} from "@prisma/client";
+import type {
+  HealthResponse,
+  PostDto,
+  PostSummaryDto,
+  SourceDto,
+  TagDto
+} from "@readlocal/shared";
 
 const app = Fastify({
   logger: true
@@ -12,7 +25,15 @@ type CreateSourceBody = {
   url?: string;
 };
 
+type CreateTagBody = {
+  name?: string;
+};
+
 const workerBaseUrl = process.env.WORKER_BASE_URL;
+
+type PostWithTags = Post & {
+  tags: Array<PostTag & { tag: Tag }>;
+};
 
 function toSourceDto(source: Source): SourceDto {
   return {
@@ -21,6 +42,41 @@ function toSourceDto(source: Source): SourceDto {
     title: source.title,
     createdAt: source.createdAt.toISOString()
   };
+}
+
+function toTagDto(tag: Tag): TagDto {
+  return {
+    id: tag.id,
+    name: tag.name
+  };
+}
+
+function toPostTagsDto(post: PostWithTags): TagDto[] {
+  return post.tags
+    .map((postTag) => toTagDto(postTag.tag))
+    .sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function toPostSummaryDto(post: PostWithTags): PostSummaryDto {
+  return {
+    id: post.id,
+    sourceId: post.sourceId,
+    title: post.title,
+    originalUrl: post.originalUrl,
+    publishedAt: post.publishedAt.toISOString(),
+    tags: toPostTagsDto(post)
+  };
+}
+
+function toPostDto(post: PostWithTags): PostDto {
+  return {
+    ...toPostSummaryDto(post),
+    content: post.content
+  };
+}
+
+function normalizeTagName(name: string): string {
+  return name.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
 async function enqueueSourceIngestion(sourceId: string) {
@@ -73,6 +129,146 @@ app.get("/sources", async (): Promise<SourceDto[]> => {
 
   return sources.map(toSourceDto);
 });
+
+app.get<{ Params: { id: string }; Querystring: { tagId?: string } }>(
+  "/sources/:id/posts",
+  async (request): Promise<PostSummaryDto[]> => {
+    const posts = await prisma.post.findMany({
+      where: {
+        sourceId: request.params.id,
+        ...(request.query.tagId
+          ? {
+              tags: {
+                some: {
+                  tagId: request.query.tagId
+                }
+              }
+            }
+          : {})
+      },
+      include: {
+        tags: {
+          include: {
+            tag: true
+          }
+        }
+      },
+      orderBy: {
+        publishedAt: "desc"
+      }
+    });
+
+    return posts.map(toPostSummaryDto);
+  }
+);
+
+app.get<{ Params: { id: string } }>("/posts/:id", async (request, reply) => {
+  const post = await prisma.post.findUnique({
+    where: {
+      id: request.params.id
+    },
+    include: {
+      tags: {
+        include: {
+          tag: true
+        }
+      }
+    }
+  });
+
+  if (!post) {
+    return reply.status(404).send({ message: "Post not found." });
+  }
+
+  return toPostDto(post);
+});
+
+app.get("/tags", async (): Promise<TagDto[]> => {
+  const tags = await prisma.tag.findMany({
+    orderBy: {
+      name: "asc"
+    }
+  });
+
+  return tags.map(toTagDto);
+});
+
+app.post<{ Params: { id: string }; Body: CreateTagBody }>(
+  "/posts/:id/tags",
+  async (request, reply) => {
+    const name = normalizeTagName(request.body?.name ?? "");
+
+    if (!name) {
+      return reply.status(400).send({ message: "A tag name is required." });
+    }
+
+    const post = await prisma.post.findUnique({
+      where: {
+        id: request.params.id
+      },
+      select: {
+        id: true
+      }
+    });
+
+    if (!post) {
+      return reply.status(404).send({ message: "Post not found." });
+    }
+
+    const tag = await prisma.tag.upsert({
+      where: {
+        name
+      },
+      update: {},
+      create: {
+        name
+      }
+    });
+
+    await prisma.postTag.upsert({
+      where: {
+        postId_tagId: {
+          postId: post.id,
+          tagId: tag.id
+        }
+      },
+      update: {},
+      create: {
+        postId: post.id,
+        tagId: tag.id
+      }
+    });
+
+    return reply.status(201).send(toTagDto(tag));
+  }
+);
+
+app.delete<{ Params: { id: string; tagId: string } }>(
+  "/posts/:id/tags/:tagId",
+  async (request, reply) => {
+    await prisma.postTag
+      .delete({
+        where: {
+          postId_tagId: {
+            postId: request.params.id,
+            tagId: request.params.tagId
+          }
+        }
+      })
+      .catch((error: unknown) => {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === "P2025"
+        ) {
+          return null;
+        }
+
+        throw error;
+      });
+
+    return reply.status(204).send();
+  }
+);
 
 app.post<{ Body: CreateSourceBody }>("/sources", async (request, reply) => {
   const rawUrl = request.body?.url?.trim();

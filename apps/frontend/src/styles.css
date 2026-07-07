@@ -1,299 +1,84 @@
-:root {
-  color: #1c2422;
-  background: #f5f2ea;
-  font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    sans-serif;
-}
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  min-width: 320px;
-}
-
-button,
-input {
-  font: inherit;
-}
-
-a {
-  color: #1f6f68;
-}
-
-.app-shell {
-  min-height: 100vh;
-  display: grid;
-  grid-template-columns: minmax(300px, 380px) 1fr;
-}
-
-.sidebar {
-  min-height: 100vh;
-  border-right: 1px solid #d8d1c3;
-  background: #fcfbf7;
-  padding: 24px;
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 28px;
-}
-
-.mark {
-  display: grid;
-  width: 40px;
-  height: 40px;
-  place-items: center;
-  border-radius: 8px;
-  background: #21413d;
-  color: #ffffff;
-  font-weight: 800;
-}
-
-.brand h1,
-.detail h2 {
-  margin: 0;
-  letter-spacing: 0;
-}
-
-.brand h1 {
-  font-size: 1.35rem;
-}
-
-.brand p {
-  margin: 2px 0 0;
-  color: #64716c;
-  font-size: 0.9rem;
-}
-
-.source-form {
-  display: grid;
-  gap: 8px;
-  margin-bottom: 18px;
-}
-
-.source-form label {
-  color: #384743;
-  font-size: 0.88rem;
-  font-weight: 700;
-}
-
-.source-input-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-}
-
-.source-input-row input {
-  min-width: 0;
-  height: 42px;
-  border: 1px solid #c8cfc9;
-  border-radius: 8px;
-  background: #ffffff;
-  color: #1c2422;
-  padding: 0 12px;
-}
-
-.source-input-row input:focus {
-  border-color: #1f6f68;
-  outline: 3px solid rgba(31, 111, 104, 0.16);
-}
-
-.source-input-row button {
-  height: 42px;
-  border: 0;
-  border-radius: 8px;
-  background: #1f6f68;
-  color: #ffffff;
-  cursor: pointer;
-  font-weight: 800;
-  padding: 0 16px;
-}
-
-.source-input-row button:disabled {
-  cursor: not-allowed;
-  opacity: 0.65;
-}
-
-.notice {
-  margin: 12px 0;
-  color: #66726e;
-  font-size: 0.92rem;
-  line-height: 1.5;
-}
-
-.notice.error {
-  border-left: 3px solid #b94b4b;
-  color: #8d3030;
-  padding-left: 10px;
-}
-
-.source-list {
-  display: grid;
-  gap: 6px;
-}
-
-.source {
-  display: grid;
-  grid-template-columns: 22px minmax(0, 1fr);
-  gap: 10px;
-  width: 100%;
-  min-height: 58px;
-  align-items: start;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: transparent;
-  color: #1c2422;
-  cursor: pointer;
-  padding: 10px;
-  text-align: left;
-}
-
-.source:hover,
-.source.active {
-  border-color: #d8d1c3;
-  background: #f1eee6;
-}
-
-.folder {
-  position: relative;
-  width: 18px;
-  height: 14px;
-  margin-top: 3px;
-  border-radius: 3px;
-  background: #c6923c;
-}
-
-.folder::before {
-  position: absolute;
-  top: -4px;
-  left: 0;
-  width: 9px;
-  height: 5px;
-  border-radius: 3px 3px 0 0;
-  background: #d8a85b;
-  content: "";
-}
-
-.source strong,
-.source small {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.source strong {
-  font-size: 0.96rem;
-}
-
-.source small {
-  margin-top: 4px;
-  color: #69766f;
-  font-size: 0.8rem;
-}
-
-.detail {
-  display: grid;
-  align-items: start;
-  padding: 56px;
-}
-
-.detail article {
-  width: min(100%, 760px);
-}
-
-.eyebrow {
-  margin: 0 0 10px;
-  color: #66726e;
-  font-size: 0.78rem;
-  font-weight: 800;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-
-.detail h2 {
-  color: #17211f;
-  font-size: clamp(2rem, 5vw, 4rem);
-  line-height: 1;
-  overflow-wrap: anywhere;
-}
-
-.detail article > a {
-  display: inline-block;
-  margin-top: 18px;
-  overflow-wrap: anywhere;
-}
-
-dl {
-  display: grid;
-  gap: 14px;
-  margin: 34px 0 0;
-}
-
-dl div {
-  border-top: 1px solid #d8d1c3;
-  padding-top: 14px;
-}
-
-dt {
-  color: #66726e;
-  font-size: 0.8rem;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-dd {
-  margin: 4px 0 0;
-  color: #283531;
-}
-
-.posts-placeholder {
-  margin-top: 34px;
-  border-top: 1px solid #d8d1c3;
-  padding-top: 20px;
-}
-
-.posts-placeholder h3 {
-  margin: 0;
-  color: #17211f;
-  font-size: 1rem;
-}
-
-.posts-placeholder p {
-  margin: 8px 0 0;
-  color: #66726e;
-}
-
-.empty-detail p:not(.eyebrow) {
-  max-width: 40ch;
-  color: #66726e;
-  line-height: 1.7;
-}
-
-@media (max-width: 760px) {
-  .app-shell {
-    grid-template-columns: 1fr;
+@layer base {
+  :root {
+    --background: 43 36% 95%;
+    --foreground: 195 9% 14%;
+    --card: 0 0% 100%;
+    --card-foreground: 195 9% 14%;
+    --primary: 199 53% 37%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 72 20% 93%;
+    --secondary-foreground: 202 10% 30%;
+    --muted: 40 20% 91%;
+    --muted-foreground: 197 6% 44%;
+    --accent: 193 36% 95%;
+    --accent-foreground: 198 54% 31%;
+    --destructive: 0 43% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 38 21% 83%;
+    --input: 195 9% 80%;
+    --ring: 199 53% 37%;
+    --radius: 0.5rem;
   }
 
-  .sidebar {
-    min-height: auto;
-    border-right: 0;
-    border-bottom: 1px solid #d8d1c3;
-    padding: 18px;
+  * {
+    @apply border-border;
   }
 
-  .detail {
-    padding: 28px 18px;
+  body {
+    @apply min-w-80 bg-background font-sans text-foreground antialiased;
   }
 
-  .source-input-row {
-    grid-template-columns: 1fr;
+  a {
+    @apply text-primary;
+  }
+}
+
+@layer components {
+  .reader-content {
+    @apply max-w-[720px] font-serif text-[1.08rem] leading-8 text-[#262b2e] md:text-[1.16rem];
+  }
+
+  .reader-content > *:first-child {
+    @apply mt-0;
+  }
+
+  .reader-content p,
+  .reader-content ul,
+  .reader-content ol,
+  .reader-content blockquote,
+  .reader-content pre {
+    @apply my-6;
+  }
+
+  .reader-content h1,
+  .reader-content h2,
+  .reader-content h3 {
+    @apply mt-8 font-sans font-bold leading-tight text-foreground;
+  }
+
+  .reader-content a {
+    @apply underline underline-offset-4;
+  }
+
+  .reader-content img,
+  .reader-content video {
+    @apply h-auto max-w-full rounded-md;
+  }
+
+  .reader-content pre {
+    @apply overflow-x-auto rounded-md bg-muted p-4;
+  }
+
+  .reader-content code {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    @apply text-[0.92em];
+  }
+
+  .reader-content blockquote {
+    @apply ml-0 border-l-4 border-[#b67845] pl-4 text-[#4c5357];
   }
 }

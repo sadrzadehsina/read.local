@@ -10,3 +10,21 @@ export type SourceDto = {
   title: string;
   createdAt: string;
 };
+
+export type TagDto = {
+  id: string;
+  name: string;
+};
+
+export type PostSummaryDto = {
+  id: string;
+  sourceId: string;
+  title: string;
+  originalUrl: string;
+  publishedAt: string;
+  tags: TagDto[];
+};
+
+export type PostDto = PostSummaryDto & {
+  content: string;
+};

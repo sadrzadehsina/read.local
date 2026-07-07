@@ -1,5 +1,11 @@
 import React, { FormEvent, useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom/client";
+import { ExternalLink, Folder, Plus, Rss, X } from "lucide-react";
+import { Badge } from "./components/ui/badge";
+import { Button } from "./components/ui/button";
+import { Input } from "./components/ui/input";
+import { Select } from "./components/ui/select";
+import { cn } from "./lib/utils";
 import "./styles.css";
 
 type Source = {
@@ -9,36 +15,194 @@ type Source = {
   createdAt: string;
 };
 
+type Tag = {
+  id: string;
+  name: string;
+};
+
+type PostSummary = {
+  id: string;
+  sourceId: string;
+  title: string;
+  originalUrl: string;
+  publishedAt: string;
+  tags: Tag[];
+};
+
+type Post = PostSummary & {
+  content: string;
+};
+
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "/api";
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short"
+  }).format(new Date(value));
+}
+
+function sanitizeHtml(html: string) {
+  const parser = new DOMParser();
+  const document = parser.parseFromString(html, "text/html");
+  const blockedSelectors = [
+    "script",
+    "style",
+    "iframe",
+    "object",
+    "embed",
+    "form",
+    "input",
+    "button",
+    "textarea",
+    "select",
+    "link",
+    "meta",
+    "base",
+    "svg",
+    "math"
+  ];
+  const safeProtocols = new Set(["http:", "https:", "mailto:"]);
+
+  document.querySelectorAll(blockedSelectors.join(",")).forEach((node) => {
+    node.remove();
+  });
+
+  document.body.querySelectorAll("*").forEach((element) => {
+    for (const attribute of Array.from(element.attributes)) {
+      const name = attribute.name.toLowerCase();
+      const value = attribute.value.trim();
+
+      if (name.startsWith("on") || name === "srcdoc" || name === "style") {
+        element.removeAttribute(attribute.name);
+        continue;
+      }
+
+      if (name === "href" || name === "src" || name.endsWith(":href")) {
+        try {
+          const url = new URL(value, window.location.href);
+
+          if (!safeProtocols.has(url.protocol)) {
+            element.removeAttribute(attribute.name);
+          }
+        } catch {
+          element.removeAttribute(attribute.name);
+        }
+      }
+    }
+
+    if (element.tagName.toLowerCase() === "a") {
+      element.setAttribute("target", "_blank");
+      element.setAttribute("rel", "noopener noreferrer");
+    }
+  });
+
+  return document.body.innerHTML || "<p>No content available.</p>";
+}
+
+function Notice({
+  children,
+  variant = "default"
+}: {
+  children: React.ReactNode;
+  variant?: "default" | "error";
+}) {
+  return (
+    <p
+      className={cn(
+        "my-3 text-sm leading-6 text-muted-foreground",
+        variant === "error" && "border-l-4 border-destructive pl-3 text-destructive"
+      )}
+    >
+      {children}
+    </p>
+  );
+}
+
+function Eyebrow({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="mb-2.5 text-xs font-extrabold uppercase tracking-normal text-muted-foreground">
+      {children}
+    </p>
+  );
+}
+
+function EmptyDetail({
+  eyebrow,
+  title,
+  children
+}: {
+  eyebrow: string;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <article className="min-w-0">
+      <Eyebrow>{eyebrow}</Eyebrow>
+      <h2 className="m-0 text-3xl font-bold leading-tight text-foreground">{title}</h2>
+      <p className="mt-4 max-w-[40ch] leading-7 text-muted-foreground">{children}</p>
+    </article>
+  );
+}
 
 function App() {
   const [sources, setSources] = useState<Source[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
+  const [selectedTagId, setSelectedTagId] = useState("");
+  const [posts, setPosts] = useState<PostSummary[]>([]);
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
+  const [readerPost, setReaderPost] = useState<Post | null>(null);
   const [url, setUrl] = useState("");
+  const [tagName, setTagName] = useState("");
+  const [postsRefreshKey, setPostsRefreshKey] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingPosts, setIsLoadingPosts] = useState(false);
+  const [isLoadingReader, setIsLoadingReader] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmittingTag, setIsSubmittingTag] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [postsError, setPostsError] = useState<string | null>(null);
+  const [readerError, setReaderError] = useState<string | null>(null);
+  const [tagError, setTagError] = useState<string | null>(null);
 
   const selectedSource = useMemo(
     () => sources.find((source) => source.id === selectedSourceId) ?? null,
     [selectedSourceId, sources]
   );
 
+  const tagSuggestions = useMemo(
+    () =>
+      tags.filter(
+        (tag) => !readerPost?.tags.some((postTag) => postTag.id === tag.id)
+      ),
+    [readerPost?.tags, tags]
+  );
+
   useEffect(() => {
     let isMounted = true;
 
-    async function loadSources() {
+    async function loadInitialData() {
       try {
-        const response = await fetch(`${apiBaseUrl}/sources`);
+        const [sourcesResponse, tagsResponse] = await Promise.all([
+          fetch(`${apiBaseUrl}/sources`),
+          fetch(`${apiBaseUrl}/tags`)
+        ]);
 
-        if (!response.ok) {
+        if (!sourcesResponse.ok) {
           throw new Error("Unable to load sources.");
         }
 
-        const nextSources = (await response.json()) as Source[];
+        if (!tagsResponse.ok) {
+          throw new Error("Unable to load tags.");
+        }
+
+        const nextSources = (await sourcesResponse.json()) as Source[];
+        const nextTags = (await tagsResponse.json()) as Tag[];
 
         if (isMounted) {
           setSources(nextSources);
+          setTags(nextTags);
           setSelectedSourceId((currentId) => currentId ?? nextSources[0]?.id ?? null);
           setError(null);
         }
@@ -55,12 +219,113 @@ function App() {
       }
     }
 
-    void loadSources();
+    void loadInitialData();
 
     return () => {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    setSelectedPostId(null);
+    setReaderPost(null);
+  }, [selectedSourceId, selectedTagId]);
+
+  useEffect(() => {
+    if (!selectedSourceId) {
+      setPosts([]);
+      return;
+    }
+
+    let isMounted = true;
+    setIsLoadingPosts(true);
+    setPostsError(null);
+
+    async function loadPosts() {
+      try {
+        const params = new URLSearchParams();
+
+        if (selectedTagId) {
+          params.set("tagId", selectedTagId);
+        }
+
+        const response = await fetch(
+          `${apiBaseUrl}/sources/${selectedSourceId}/posts${
+            params.size ? `?${params.toString()}` : ""
+          }`
+        );
+
+        if (!response.ok) {
+          throw new Error("Unable to load posts.");
+        }
+
+        const nextPosts = (await response.json()) as PostSummary[];
+
+        if (isMounted) {
+          setPosts(nextPosts);
+        }
+      } catch (loadError) {
+        if (isMounted) {
+          setPostsError(
+            loadError instanceof Error ? loadError.message : "Unable to load posts."
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingPosts(false);
+        }
+      }
+    }
+
+    void loadPosts();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [postsRefreshKey, selectedSourceId, selectedTagId]);
+
+  useEffect(() => {
+    if (!selectedPostId) {
+      setReaderPost(null);
+      return;
+    }
+
+    let isMounted = true;
+    setIsLoadingReader(true);
+    setReaderError(null);
+
+    async function loadPost() {
+      try {
+        const response = await fetch(`${apiBaseUrl}/posts/${selectedPostId}`);
+
+        if (!response.ok) {
+          throw new Error("Unable to open post.");
+        }
+
+        const post = (await response.json()) as Post;
+
+        if (isMounted) {
+          setReaderPost(post);
+        }
+      } catch (loadError) {
+        if (isMounted) {
+          setReaderError(
+            loadError instanceof Error ? loadError.message : "Unable to open post."
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingReader(false);
+        }
+      }
+    }
+
+    void loadPost();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedPostId]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -87,6 +352,7 @@ function App() {
 
       setSources((currentSources) => [source, ...currentSources]);
       setSelectedSourceId(source.id);
+      setSelectedPostId(null);
       setUrl("");
     } catch (submitError) {
       setError(
@@ -97,23 +363,127 @@ function App() {
     }
   }
 
+  function handleSelectSource(sourceId: string) {
+    setSelectedSourceId(sourceId);
+  }
+
+  async function handleAddTag(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!readerPost) {
+      return;
+    }
+
+    setIsSubmittingTag(true);
+    setTagError(null);
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/posts/${readerPost.id}/tags`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ name: tagName })
+      });
+
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as
+          | { message?: string }
+          | null;
+        throw new Error(body?.message ?? "Unable to add tag.");
+      }
+
+      const tag = (await response.json()) as Tag;
+
+      setTags((currentTags) =>
+        currentTags.some((currentTag) => currentTag.id === tag.id)
+          ? currentTags
+          : [...currentTags, tag].sort((left, right) => left.name.localeCompare(right.name))
+      );
+      setReaderPost((currentPost) =>
+        currentPost && !currentPost.tags.some((currentTag) => currentTag.id === tag.id)
+          ? { ...currentPost, tags: [...currentPost.tags, tag] }
+          : currentPost
+      );
+      setPosts((currentPosts) =>
+        currentPosts.map((post) =>
+          post.id === readerPost.id && !post.tags.some((currentTag) => currentTag.id === tag.id)
+            ? { ...post, tags: [...post.tags, tag] }
+            : post
+        )
+      );
+      setTagName("");
+      setPostsRefreshKey((key) => key + 1);
+    } catch (submitError) {
+      setTagError(
+        submitError instanceof Error ? submitError.message : "Unable to add tag."
+      );
+    } finally {
+      setIsSubmittingTag(false);
+    }
+  }
+
+  async function handleRemoveTag(tagId: string) {
+    if (!readerPost) {
+      return;
+    }
+
+    setTagError(null);
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/posts/${readerPost.id}/tags/${tagId}`, {
+        method: "DELETE"
+      });
+
+      if (!response.ok) {
+        throw new Error("Unable to remove tag.");
+      }
+
+      setReaderPost((currentPost) =>
+        currentPost
+          ? {
+              ...currentPost,
+              tags: currentPost.tags.filter((tag) => tag.id !== tagId)
+            }
+          : currentPost
+      );
+      setPosts((currentPosts) =>
+        currentPosts.map((post) =>
+          post.id === readerPost.id
+            ? { ...post, tags: post.tags.filter((tag) => tag.id !== tagId) }
+            : post
+        )
+      );
+      setPostsRefreshKey((key) => key + 1);
+    } catch (removeError) {
+      setTagError(
+        removeError instanceof Error ? removeError.message : "Unable to remove tag."
+      );
+    }
+  }
+
   return (
-    <main className="app-shell">
-      <aside className="sidebar" aria-label="Newsletter sources">
-        <div className="brand">
-          <span className="mark" aria-hidden="true">
+    <main className="grid min-h-screen grid-cols-1 bg-background text-foreground lg:grid-cols-[minmax(280px,340px)_1fr]">
+      <aside
+        className="border-b border-border bg-[#fbfaf6] p-5 lg:min-h-screen lg:border-b-0 lg:border-r lg:p-6"
+        aria-label="Newsletter sources"
+      >
+        <div className="mb-7 flex items-center gap-3">
+          <span className="grid h-10 w-10 place-items-center rounded-md bg-[#24313a] text-sm font-extrabold text-white">
             R
           </span>
           <div>
-            <h1>Read Local</h1>
-            <p>Newsletter sources</p>
+            <h1 className="m-0 text-[1.35rem] font-bold leading-tight">Read Local</h1>
+            <p className="mt-0.5 text-sm text-muted-foreground">Newsletter sources</p>
           </div>
         </div>
 
-        <form className="source-form" onSubmit={handleSubmit}>
-          <label htmlFor="source-url">Newsletter URL</label>
-          <div className="source-input-row">
-            <input
+        <form className="mb-5 grid gap-2" onSubmit={handleSubmit}>
+          <label className="text-sm font-bold text-foreground" htmlFor="source-url">
+            Newsletter URL
+          </label>
+          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] lg:grid-cols-[minmax(0,1fr)_auto]">
+            <Input
               id="source-url"
               name="url"
               type="url"
@@ -122,66 +492,223 @@ function App() {
               onChange={(event) => setUrl(event.target.value)}
               required
             />
-            <button type="submit" disabled={isSubmitting}>
+            <Button type="submit" disabled={isSubmitting}>
+              <Plus className="h-4 w-4" aria-hidden="true" />
               {isSubmitting ? "Adding" : "Add"}
-            </button>
+            </Button>
           </div>
         </form>
 
-        {error ? <p className="notice error">{error}</p> : null}
+        {error ? <Notice variant="error">{error}</Notice> : null}
 
-        <nav className="source-list" aria-label="Saved sources">
-          {isLoading ? <p className="notice">Loading sources...</p> : null}
+        <nav className="grid gap-1.5" aria-label="Saved sources">
+          {isLoading ? <Notice>Loading sources...</Notice> : null}
 
           {!isLoading && sources.length === 0 ? (
-            <p className="notice">Add a newsletter or feed URL to begin.</p>
+            <Notice>Add a newsletter or feed URL to begin.</Notice>
           ) : null}
 
           {sources.map((source) => (
-            <button
-              className={source.id === selectedSourceId ? "source active" : "source"}
+            <Button
+              className={cn(
+                "grid h-auto min-h-[58px] w-full grid-cols-[22px_minmax(0,1fr)] items-start justify-start gap-2.5 whitespace-normal px-2.5 py-2.5 text-left",
+                source.id === selectedSourceId
+                  ? "border border-border bg-muted text-foreground"
+                  : "border border-transparent bg-transparent text-foreground hover:border-border hover:bg-muted"
+              )}
               key={source.id}
               type="button"
-              onClick={() => setSelectedSourceId(source.id)}
+              variant="ghost"
+              onClick={() => handleSelectSource(source.id)}
             >
-              <span className="folder" aria-hidden="true" />
-              <span>
-                <strong>{source.title}</strong>
-                <small>{source.url}</small>
+              <Folder className="mt-0.5 h-5 w-5 shrink-0 fill-[#cc9460] text-[#b67845]" />
+              <span className="min-w-0">
+                <strong className="block truncate text-[0.96rem]">{source.title}</strong>
+                <small className="mt-1 block truncate text-xs text-muted-foreground">
+                  {source.url}
+                </small>
               </span>
-            </button>
+            </Button>
           ))}
         </nav>
       </aside>
 
-      <section className="detail" aria-live="polite">
-        {selectedSource ? (
-          <article>
-            <p className="eyebrow">Source</p>
-            <h2>{selectedSource.title}</h2>
-            <a href={selectedSource.url} target="_blank" rel="noreferrer">
-              {selectedSource.url}
-            </a>
-            <dl>
-              <div>
-                <dt>Added</dt>
-                <dd>{new Date(selectedSource.createdAt).toLocaleString()}</dd>
+      <section
+        className="grid min-w-0 grid-cols-1 md:grid-cols-[minmax(260px,36vw)_minmax(0,1fr)] lg:grid-cols-[minmax(280px,360px)_minmax(0,1fr)]"
+        aria-live="polite"
+      >
+        <section
+          className="min-h-0 border-b border-border bg-card p-5 md:min-h-screen md:border-b-0 md:border-r md:p-6 lg:p-8"
+          aria-label="Posts"
+        >
+          {selectedSource ? (
+            <>
+              <header className="mb-6">
+                <Eyebrow>Source</Eyebrow>
+                <h2 className="m-0 break-words text-2xl font-bold leading-tight">
+                  {selectedSource.title}
+                </h2>
+                <a
+                  className="mt-2.5 inline-block break-all text-sm"
+                  href={selectedSource.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {selectedSource.url}
+                </a>
+                <label className="mt-4 grid gap-1.5">
+                  <span className="text-sm font-extrabold text-foreground">
+                    Filter by tag
+                  </span>
+                  <Select
+                    value={selectedTagId}
+                    onChange={(event) => setSelectedTagId(event.target.value)}
+                  >
+                    <option value="">All posts</option>
+                    {tags.map((tag) => (
+                      <option key={tag.id} value={tag.id}>
+                        {tag.name}
+                      </option>
+                    ))}
+                  </Select>
+                </label>
+              </header>
+
+              {postsError ? <Notice variant="error">{postsError}</Notice> : null}
+              {isLoadingPosts ? <Notice>Loading posts...</Notice> : null}
+
+              {!isLoadingPosts && posts.length === 0 ? (
+                <Notice>No posts found yet.</Notice>
+              ) : null}
+
+              <div className="grid gap-2">
+                {posts.map((post) => (
+                  <Button
+                    className={cn(
+                      "grid h-auto min-h-[84px] w-full justify-start gap-2 whitespace-normal rounded-md border p-3.5 text-left",
+                      post.id === selectedPostId
+                        ? "border-[#9fb9c8] bg-accent text-foreground"
+                        : "border-[#e2e5e7] bg-card text-foreground hover:border-[#9fb9c8] hover:bg-accent"
+                    )}
+                    key={post.id}
+                    type="button"
+                    variant="ghost"
+                    onClick={() => setSelectedPostId(post.id)}
+                  >
+                    <span className="overflow-hidden [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] text-[0.98rem] font-extrabold leading-snug">
+                      {post.title}
+                    </span>
+                    {post.tags.length > 0 ? (
+                      <span className="flex flex-wrap gap-1.5">
+                        {post.tags.map((tag) => (
+                          <Badge key={tag.id} variant="secondary">
+                            {tag.name}
+                          </Badge>
+                        ))}
+                      </span>
+                    ) : null}
+                    <time className="text-xs text-muted-foreground" dateTime={post.publishedAt}>
+                      {formatDate(post.publishedAt)}
+                    </time>
+                  </Button>
+                ))}
               </div>
-              <div>
-                <dt>Status</dt>
-                <dd>Ingestion starts automatically when a source is added.</dd>
-              </div>
-            </dl>
-            <section className="posts-placeholder" aria-label="Posts">
-              <h3>Posts</h3>
-              <p>No posts to show yet.</p>
-            </section>
+            </>
+          ) : (
+            <EmptyDetail eyebrow="Source" title="No source selected">
+              Add a newsletter URL, then select it from the sidebar.
+            </EmptyDetail>
+          )}
+        </section>
+
+        {selectedPostId ? (
+          <article className="min-w-0 px-5 py-8 md:px-8 lg:px-16 lg:py-14">
+            {readerError ? <Notice variant="error">{readerError}</Notice> : null}
+            {isLoadingReader ? <Notice>Opening post...</Notice> : null}
+
+            {readerPost ? (
+              <>
+                <header className="mb-8 max-w-[760px]">
+                  <Eyebrow>Reader</Eyebrow>
+                  <h2 className="m-0 break-words font-serif text-4xl font-bold leading-[1.05] text-[#171c1f] md:text-5xl xl:text-6xl">
+                    {readerPost.title}
+                  </h2>
+                  <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                    <time dateTime={readerPost.publishedAt}>
+                      {formatDate(readerPost.publishedAt)}
+                    </time>
+                    <Button asChild variant="outline">
+                      <a
+                        href={readerPost.originalUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <ExternalLink className="h-4 w-4" aria-hidden="true" />
+                        Open original in browser
+                      </a>
+                    </Button>
+                  </div>
+                  <section className="mt-5 grid gap-3" aria-label="Post tags">
+                    <div className="flex flex-wrap gap-2">
+                      {readerPost.tags.length > 0 ? (
+                        readerPost.tags.map((tag) => (
+                          <Button
+                            className="h-7 rounded-full px-2.5 text-xs"
+                            key={tag.id}
+                            type="button"
+                            variant="secondary"
+                            onClick={() => void handleRemoveTag(tag.id)}
+                            title={`Remove ${tag.name}`}
+                          >
+                            {tag.name}
+                            <X className="h-3.5 w-3.5" aria-hidden="true" />
+                          </Button>
+                        ))
+                      ) : (
+                        <Notice>No tags yet.</Notice>
+                      )}
+                    </div>
+                    <form
+                      className="grid max-w-sm grid-cols-[minmax(0,1fr)_auto] gap-2"
+                      onSubmit={handleAddTag}
+                    >
+                      <Input
+                        aria-label="Tag name"
+                        list="tag-suggestions"
+                        placeholder="Add tag"
+                        value={tagName}
+                        onChange={(event) => setTagName(event.target.value)}
+                      />
+                      <datalist id="tag-suggestions">
+                        {tagSuggestions.map((tag) => (
+                          <option key={tag.id} value={tag.name} />
+                        ))}
+                      </datalist>
+                      <Button type="submit" disabled={isSubmittingTag || !tagName.trim()}>
+                        {isSubmittingTag ? "Adding" : "Add tag"}
+                      </Button>
+                    </form>
+                    {tagError ? <Notice variant="error">{tagError}</Notice> : null}
+                  </section>
+                </header>
+                <div
+                  className="reader-content"
+                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(readerPost.content) }}
+                />
+              </>
+            ) : null}
+          </article>
+        ) : selectedSource ? (
+          <article className="min-w-0 px-5 py-8 md:px-8 lg:px-16 lg:py-14">
+            <EmptyDetail eyebrow="Reader" title="Choose a post">
+              Select a post from this source to read it here.
+            </EmptyDetail>
           </article>
         ) : (
-          <article className="empty-detail">
-            <p className="eyebrow">Source</p>
-            <h2>No source selected</h2>
-            <p>Add a newsletter URL, then select it from the sidebar.</p>
+          <article className="min-w-0 px-5 py-8 md:px-8 lg:px-16 lg:py-14">
+            <EmptyDetail eyebrow="Reader" title="Nothing open">
+              Your reading view will appear here.
+            </EmptyDetail>
           </article>
         )}
       </section>

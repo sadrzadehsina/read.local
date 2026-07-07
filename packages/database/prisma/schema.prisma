@@ -23,6 +23,23 @@ model Post {
   originalUrl String   @unique
   publishedAt DateTime
   source      Source   @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  tags        PostTag[]
 
   @@index([sourceId])
+}
+
+model Tag {
+  id    String    @id @default(cuid())
+  name  String    @unique
+  posts PostTag[]
+}
+
+model PostTag {
+  postId String
+  tagId  String
+  post   Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([postId, tagId])
+  @@index([tagId])
 }
